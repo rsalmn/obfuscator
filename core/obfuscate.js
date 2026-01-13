@@ -1,51 +1,59 @@
+import { tokenize } from "./tokenizer.js";
+
 export function obfuscateLuau(code) {
-  const idMap = {};
-  let idCount = 0;
+  const tokens = tokenize(code);
+  const scopes = [{}];
+  let idCounter = 0;
 
-  function genId() {
-    return "_x" + (++idCount);
+  function gen() {
+    return "_x" + Math.random().toString(36).slice(2, 8);
   }
 
-  // 1. rename locals & functions
-  code = code.replace(
-    /\b(local|function)\s+([a-zA-Z_]\w*)/g,
-    (m, k, name) => {
-      if (!idMap[name]) idMap[name] = genId();
-      return `${k} ${idMap[name]}`;
+  function currentScope() {
+    return scopes[scopes.length - 1];
+  }
+
+  const keywords = new Set([
+    "local","function","end","if","then","else",
+    "for","while","do","return"
+  ]);
+
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+
+    // new scope
+    if (t.value === "function" || t.value === "do") {
+      scopes.push({});
     }
-  );
 
-  // replace identifiers
-  for (const k in idMap) {
-    code = code.replace(
-      new RegExp("\\b" + k + "\\b", "g"),
-      idMap[k]
-    );
+    // end scope
+    if (t.value === "end") {
+      scopes.pop();
+    }
+
+    // local variable
+    if (t.value === "local" && tokens[i+1]?.type === "id") {
+      const name = tokens[i+1].value;
+      const obf = gen();
+      currentScope()[name] = obf;
+      tokens[i+1].value = obf;
+      continue;
+    }
+
+    // replace identifier
+    if (t.type === "id" && !keywords.has(t.value)) {
+      for (let s = scopes.length - 1; s >= 0; s--) {
+        if (scopes[s][t.value]) {
+          t.value = scopes[s][t.value];
+          break;
+        }
+      }
+    }
   }
 
-  // 2. encode strings
-  code = code.replace(/"([^"]*)"/g, (_, s) => {
-    return `"${xorEncode(s)}"`;
-  });
-
-  // 3. wrap execution
-  return `
-local function __d(s)
-  local t = {}
-  for i = 1, #s do
-    t[i] = string.char(bit32.bxor(s:byte(i), 11))
-  end
-  return table.concat(t)
-end
-
-return (function()
-${code}
-end)()
-`.trim();
+  return build(tokens);
 }
 
-function xorEncode(str, k = 11) {
-  return [...str]
-    .map(c => String.fromCharCode(c.charCodeAt(0) ^ k))
-    .join("");
+function build(tokens) {
+  return tokens.map(t => t.value).join("");
 }
