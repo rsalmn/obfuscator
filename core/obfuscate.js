@@ -36,6 +36,9 @@ export function obfuscateLuau(code) {
   }
 
   function currentScope() {
+    if (!scopes.length) {
+      scopes.push({});
+    }
     return scopes[scopes.length - 1];
   }
 
@@ -57,14 +60,16 @@ export function obfuscateLuau(code) {
     const next = tokens[i + 1];
 
     // ---- scope open
-    if (t.value === "function" || t.value === "do" || t.value === "then") {
+    if (t.value === "do" || t.value === "then") {
       scopes.push({});
     }
-
-    // ---- scope close
+    
     if (t.value === "end" || t.value === "until") {
-      scopes.pop();
+      if (scopes.length > 1) {
+        scopes.pop();
+      }
     }
+
 
     // ---- local declaration
     if (
